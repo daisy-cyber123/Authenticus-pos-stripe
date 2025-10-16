@@ -28,9 +28,15 @@ const READER_ID = process.env.READER_ID;
 // Middleware
 // --------------------
 app.use(cors());
-app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.json());
 app.use('/webhook', bodyParser.raw({ type: 'application/json' }));
+
+// --------------------
+// Debug route (helps verify backend is responding)
+// --------------------
+app.get('/ping', (_, res) => {
+  res.json({ message: 'pong' });
+});
 
 // --------------------
 // Root route
@@ -81,7 +87,7 @@ app.post('/process-on-reader', async (req, res) => {
     if (!payment_intent)
       return res.status(400).json({ error: 'Missing payment_intent' });
 
-    // Tell Stripe to process on the WisePOS E
+    // Tell Stripe to process payment on your WisePOS E
     await stripe.terminal.readers.processPaymentIntent(READER_ID, {
       payment_intent,
     });
@@ -100,11 +106,11 @@ app.post('/process-on-reader', async (req, res) => {
     res.json({ success: true, payment_intent: result });
 
     // -------------------------------
-    // NEW: Prompt customer for email/SMS receipt
+    // Prompt customer for email/SMS receipt
     // -------------------------------
     try {
       if (result.status === 'succeeded') {
-        await new Promise((r) => setTimeout(r, 1000)); // let reader refresh
+        await new Promise((r) => setTimeout(r, 1000)); // small delay
 
         const inputResult = await stripe.terminal.readers.collectInputs(
           READER_ID,
@@ -129,10 +135,22 @@ app.post('/process-on-reader', async (req, res) => {
 });
 
 // --------------------
-// Webhook (optional, extend later)
+// Webhook (optional)
 // --------------------
 app.post('/webhook', (req, res) => {
   res.json({ received: true });
+});
+
+// --------------------
+// Serve static files LAST (prevents HTML from overriding JSON routes)
+// --------------------
+app.use(express.static(path.join(__dirname, 'public')));
+
+// --------------------
+// Fallback for unknown routes
+// --------------------
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found', path: req.path });
 });
 
 // --------------------
