@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Authenticus POS Control</title>
+  <title>Authenticus POS</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     body { font-family: Arial, sans-serif; background:#111; color:#fff; text-align:center; padding:40px; }
@@ -16,6 +16,8 @@
     #charge { margin-top:25px; background:#28a745; color:#fff; border:none; border-radius:10px; padding:15px 25px; font-size:20px; cursor:pointer; transition:0.2s; }
     #charge:hover { background:#34c759; }
     #clear { background:#444; color:#fff; border:none; border-radius:10px; padding:10px 20px; margin-top:10px; cursor:pointer; }
+    #cancel { background:#f54242; color:#fff; border:none; border-radius:10px; padding:10px 20px; margin-top:10px; cursor:pointer; }
+    #cancel:hover { background:#ff5c5c; }
   </style>
 </head>
 <body>
@@ -38,16 +40,15 @@
   </div>
 
   <button id="charge" onclick="charge()">💳 Charge Customer</button>
+  <button id="cancel" onclick="cancelReader()">🧹 Cancel on Reader</button>
   <button id="clear" onclick="clearOrder()">Clear Order</button>
   <div id="status"></div>
 
   <script>
-    // Use same-origin so you don't have to hardcode your Render URL
     const BASE_URL = window.location.origin;
     let order = [];
 
     function addItem(name, price) {
-      // price is in cents
       const existing = order.find(i => i.name === name);
       if (existing) existing.qty++;
       else order.push({ name, price, qty: 1 });
@@ -109,6 +110,25 @@
           clearOrder();
         } else {
           throw new Error(result.error || "Payment failed");
+        }
+      } catch (err) {
+        status.innerHTML = `❌ Error: ${err.message}`;
+      }
+    }
+
+    async function cancelReader() {
+      const status = document.getElementById("status");
+      status.innerHTML = "Cancelling current reader action...";
+      try {
+        const cancelRes = await fetch(`${BASE_URL}/cancel-reader`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        });
+        const result = await cancelRes.json();
+        if (result.success) {
+          status.innerHTML = "✅ Reader reset to idle.";
+        } else {
+          throw new Error(result.error || "Cancel failed");
         }
       } catch (err) {
         status.innerHTML = `❌ Error: ${err.message}`;
