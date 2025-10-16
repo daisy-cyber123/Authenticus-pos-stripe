@@ -1,4 +1,4 @@
-// --------------------
+/ --------------------
 // Load environment variables
 // --------------------
 require('dotenv').config();
@@ -32,7 +32,7 @@ app.use(bodyParser.json());
 app.use('/webhook', bodyParser.raw({ type: 'application/json' }));
 
 // --------------------
-// Debug route (helps verify backend is responding)
+// Debug route
 // --------------------
 app.get('/ping', (_, res) => {
   res.json({ message: 'pong' });
@@ -105,9 +105,7 @@ app.post('/process-on-reader', async (req, res) => {
     // Respond to frontend
     res.json({ success: true, payment_intent: result });
 
-    // -------------------------------
     // Prompt customer for email/SMS receipt
-    // -------------------------------
     try {
       if (result.status === 'succeeded') {
         await new Promise((r) => setTimeout(r, 1000)); // small delay
@@ -135,6 +133,20 @@ app.post('/process-on-reader', async (req, res) => {
 });
 
 // --------------------
+// Cancel Reader Action (Clear Button)
+// --------------------
+app.post('/cancel-reader', async (req, res) => {
+  try {
+    await stripe.terminal.readers.cancelAction(READER_ID);
+    console.log('🧹 Reader action cancelled, back to idle');
+    res.json({ success: true, message: 'Reader reset to idle.' });
+  } catch (err) {
+    console.error('⚠️ Error cancelling reader action:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --------------------
 // Webhook (optional)
 // --------------------
 app.post('/webhook', (req, res) => {
@@ -142,7 +154,7 @@ app.post('/webhook', (req, res) => {
 });
 
 // --------------------
-// Serve static files LAST (prevents HTML from overriding JSON routes)
+// Serve static files LAST
 // --------------------
 app.use(express.static(path.join(__dirname, 'public')));
 
