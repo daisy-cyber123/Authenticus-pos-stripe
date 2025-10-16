@@ -28,29 +28,20 @@ const READER_ID = process.env.READER_ID;
 // Middleware
 // --------------------
 app.use(cors());
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.json());
 app.use('/webhook', bodyParser.raw({ type: 'application/json' }));
 
 // --------------------
-// Debug route
+// Health Check
 // --------------------
-app.get('/ping', (_, res) => {
-  res.json({ message: 'pong' });
-});
+app.get('/ping', (_, res) => res.json({ message: 'pong' }));
 
 // --------------------
-// Root route
+// Root + POS routes
 // --------------------
-app.get('/', (_, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// --------------------
-// POS page route
-// --------------------
-app.get('/pos', (_, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'pos.html'));
-});
+app.get('/', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/pos', (_, res) => res.sendFile(path.join(__dirname, 'public', 'pos.html')));
 
 // --------------------
 // Create Payment Intent
@@ -87,40 +78,31 @@ app.post('/process-on-reader', async (req, res) => {
     if (!payment_intent)
       return res.status(400).json({ error: 'Missing payment_intent' });
 
-    // Tell Stripe to process payment on your WisePOS E
-    await stripe.terminal.readers.processPaymentIntent(READER_ID, {
-      payment_intent,
-    });
+    await stripe.terminal.readers.processPaymentIntent(READER_ID, { payment_intent });
 
-    // Poll until payment succeeds
+    // Poll until succeeded
     const poll = async () => {
       const pi = await stripe.paymentIntents.retrieve(payment_intent);
       if (pi.status === 'succeeded') return pi;
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 1500));
       return poll();
     };
 
     const result = await poll();
 
-    // Respond to frontend
     res.json({ success: true, payment_intent: result });
 
-    // Prompt customer for email/SMS receipt
+    // Prompt customer for optional email/SMS receipt
     try {
       if (result.status === 'succeeded') {
-        await new Promise((r) => setTimeout(r, 1000)); // small delay
-
-        const inputResult = await stripe.terminal.readers.collectInputs(
-          READER_ID,
-          {
-            type: 'customer_contact',
-            fields: [
-              { name: 'email', label: 'Email for receipt (optional)' },
-              { name: 'phone_number', label: 'SMS for receipt (optional)' },
-            ],
-          }
-        );
-
+        await new Promise(r => setTimeout(r, 1000));
+        const inputResult = await stripe.terminal.readers.collectInputs(READER_ID, {
+          type: 'customer_contact',
+          fields: [
+            { name: 'email', label: 'Email for receipt (optional)' },
+            { name: 'phone_number', label: 'SMS for receipt (optional)' },
+          ],
+        });
         console.log('📨 Customer input collected on reader:', inputResult);
       }
     } catch (collectErr) {
@@ -133,15 +115,15 @@ app.post('/process-on-reader', async (req, res) => {
 });
 
 // --------------------
-// Cancel Reader Action (Clear Button)
+// ✅ NEW: Cancel Payment on Reader
 // --------------------
-app.post('/cancel-reader', async (req, res) => {
+app.post('/cancel-payment', async (req, res) => {
   try {
     await stripe.terminal.readers.cancelAction(READER_ID);
-    console.log('🧹 Reader action cancelled, back to idle');
-    res.json({ success: true, message: 'Reader reset to idle.' });
+    console.log('🚫 Payment cancelled on reader.');
+    res.json({ success: true, message: 'Payment cancelled on reader' });
   } catch (err) {
-    console.error('⚠️ Error cancelling reader action:', err.message);
+    console.error('❌ Error cancelling reader action:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -149,21 +131,7 @@ app.post('/cancel-reader', async (req, res) => {
 // --------------------
 // Webhook (optional)
 // --------------------
-app.post('/webhook', (req, res) => {
-  res.json({ received: true });
-});
-
-// --------------------
-// Serve static files LAST
-// --------------------
-app.use(express.static(path.join(__dirname, 'public')));
-
-// --------------------
-// Fallback for unknown routes
-// --------------------
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found', path: req.path });
-});
+app.post('/webhook', (req, res) => res.json({ received: true }));
 
 // --------------------
 // Start server
