@@ -3,21 +3,100 @@
 <head>
   <meta charset="UTF-8" />
   <title>Authenticus POS</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: Arial, sans-serif; background:#111; color:#fff; text-align:center; padding:40px; }
-    h1 { color:#f5c542; margin-bottom:10px; }
-    .menu { display:flex; justify-content:center; flex-wrap:wrap; gap:15px; margin-bottom:30px; }
-    .item { background:#f5c542; color:#111; border:none; border-radius:10px; padding:15px 25px; font-size:18px; cursor:pointer; transition:0.2s; }
-    .item:hover { transform:scale(1.05); }
-    #order { max-width:520px; margin:0 auto; background:#222; border-radius:12px; padding:15px; text-align:left; }
-    #order h2 { text-align:center; color:#f5c542; }
-    #status { margin-top:25px; font-size:18px; }
-    #charge { margin-top:25px; background:#28a745; color:#fff; border:none; border-radius:10px; padding:15px 25px; font-size:20px; cursor:pointer; transition:0.2s; }
-    #charge:hover { background:#34c759; }
-    #clear { background:#444; color:#fff; border:none; border-radius:10px; padding:10px 20px; margin-top:10px; cursor:pointer; }
-    #cancel { background:#f54242; color:#fff; border:none; border-radius:10px; padding:10px 20px; margin-top:10px; cursor:pointer; }
-    #cancel:hover { background:#ff5c5c; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #fff;
+      text-align: center;
+      padding: 40px;
+    }
+
+    h1 {
+      color: #f5c542;
+      margin-bottom: 10px;
+    }
+
+    .menu {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+
+    .item {
+      background: #f5c542;
+      color: #111;
+      border: none;
+      border-radius: 10px;
+      padding: 15px 25px;
+      font-size: 18px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .item:hover {
+      transform: scale(1.05);
+    }
+
+    #order {
+      max-width: 520px;
+      margin: 0 auto;
+      background: #222;
+      border-radius: 12px;
+      padding: 15px;
+      text-align: left;
+    }
+
+    #order h2 {
+      text-align: center;
+      color: #f5c542;
+    }
+
+    #status {
+      margin-top: 25px;
+      font-size: 18px;
+      min-height: 25px;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 10px;
+      padding: 15px 25px;
+      font-size: 18px;
+      cursor: pointer;
+      margin: 10px;
+      transition: 0.2s;
+    }
+
+    #charge {
+      background: #28a745;
+      color: #fff;
+    }
+
+    #charge:hover {
+      background: #34c759;
+    }
+
+    #cancel {
+      background: #e63946;
+      color: #fff;
+    }
+
+    #cancel:hover {
+      background: #ff4d4d;
+    }
+
+    #clear {
+      background: #444;
+      color: #fff;
+    }
+
+    #clear:hover {
+      background: #666;
+    }
   </style>
 </head>
 <body>
@@ -39,9 +118,12 @@
     <p><strong>Total: $<span id="total">0.00</span></strong></p>
   </div>
 
-  <button id="charge" onclick="charge()">💳 Charge Customer</button>
-  <button id="cancel" onclick="cancelReader()">🧹 Cancel on Reader</button>
-  <button id="clear" onclick="clearOrder()">Clear Order</button>
+  <div>
+    <button class="btn" id="charge" onclick="charge()">💳 Charge Customer</button>
+    <button class="btn" id="cancel" onclick="cancelPayment()">🚫 Cancel Payment</button>
+    <button class="btn" id="clear" onclick="clearOrder()">Clear Order</button>
+  </div>
+
   <div id="status"></div>
 
   <script>
@@ -116,22 +198,19 @@
       }
     }
 
-    async function cancelReader() {
+    async function cancelPayment() {
       const status = document.getElementById("status");
-      status.innerHTML = "Cancelling current reader action...";
+      status.innerHTML = "Cancelling payment on reader...";
       try {
-        const cancelRes = await fetch(`${BASE_URL}/cancel-reader`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" }
-        });
-        const result = await cancelRes.json();
-        if (result.success) {
-          status.innerHTML = "✅ Reader reset to idle.";
+        const res = await fetch(`${BASE_URL}/cancel-payment`, { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+          status.innerHTML = "🚫 Payment cancelled on reader.";
         } else {
-          throw new Error(result.error || "Cancel failed");
+          status.innerHTML = `⚠️ Could not cancel: ${data.error || 'Unknown error'}`;
         }
       } catch (err) {
-        status.innerHTML = `❌ Error: ${err.message}`;
+        status.innerHTML = `❌ Cancel error: ${err.message}`;
       }
     }
   </script>
