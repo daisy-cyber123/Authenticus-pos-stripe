@@ -55,6 +55,9 @@
       color: #f5c542;
     }
 
+    .totals { margin-top: 10px; line-height: 1.4; }
+    .totals span { color: #f5c542; }
+
     #status {
       margin-top: 25px;
       font-size: 18px;
@@ -71,32 +74,14 @@
       transition: 0.2s;
     }
 
-    #charge {
-      background: #28a745;
-      color: #fff;
-    }
+    #charge { background: #28a745; color: #fff; }
+    #charge:hover { background: #34c759; }
 
-    #charge:hover {
-      background: #34c759;
-    }
+    #cancel { background: #e63946; color: #fff; }
+    #cancel:hover { background: #ff4d4d; }
 
-    #cancel {
-      background: #e63946;
-      color: #fff;
-    }
-
-    #cancel:hover {
-      background: #ff4d4d;
-    }
-
-    #clear {
-      background: #444;
-      color: #fff;
-    }
-
-    #clear:hover {
-      background: #666;
-    }
+    #clear { background: #444; color: #fff; }
+    #clear:hover { background: #666; }
   </style>
 </head>
 <body>
@@ -115,7 +100,12 @@
   <div id="order">
     <h2>Current Order</h2>
     <ul id="orderList"></ul>
-    <p><strong>Total: $<span id="total">0.00</span></strong></p>
+
+    <div class="totals">
+      <p>Subtotal: $<span id="subtotal">0.00</span></p>
+      <p>Tax (8.25%): $<span id="tax">0.00</span></p>
+      <p><strong>Total: $<span id="total">0.00</span></strong></p>
+    </div>
   </div>
 
   <div>
@@ -128,6 +118,7 @@
 
   <script>
     const BASE_URL = window.location.origin;
+    const TAX_RATE = 0.0825; // Texas Sales Tax 8.25%
     let order = [];
 
     function addItem(name, price) {
@@ -145,27 +136,41 @@
 
     function updateOrder() {
       const list = document.getElementById("orderList");
-      const totalDisplay = document.getElementById("total");
+      const subtotalEl = document.getElementById("subtotal");
+      const taxEl = document.getElementById("tax");
+      const totalEl = document.getElementById("total");
+
       list.innerHTML = "";
-      let total = 0;
+      let subtotal = 0;
+
       order.forEach(item => {
         const li = document.createElement("li");
         li.textContent = `${item.name} ×${item.qty} – $${(item.price * item.qty / 100).toFixed(2)}`;
         list.appendChild(li);
-        total += item.price * item.qty;
+        subtotal += item.price * item.qty;
       });
-      totalDisplay.textContent = (total / 100).toFixed(2);
+
+      const tax = Math.round(subtotal * TAX_RATE);
+      const total = subtotal + tax;
+
+      subtotalEl.textContent = (subtotal / 100).toFixed(2);
+      taxEl.textContent = (tax / 100).toFixed(2);
+      totalEl.textContent = (total / 100).toFixed(2);
     }
 
     async function charge() {
       const status = document.getElementById("status");
-      const total = order.reduce((sum, i) => sum + i.price * i.qty, 0);
-      if (total === 0) {
+      let subtotal = order.reduce((sum, i) => sum + i.price * i.qty, 0);
+      if (subtotal === 0) {
         status.innerHTML = "❌ Add at least one service.";
         return;
       }
 
+      const tax = Math.round(subtotal * TAX_RATE);
+      const total = subtotal + tax;
+
       status.innerHTML = `Creating payment for $${(total / 100).toFixed(2)}...`;
+
       try {
         const intentRes = await fetch(`${BASE_URL}/create-payment-intent`, {
           method: "POST",
@@ -176,6 +181,7 @@
             metadata: { items: JSON.stringify(order) }
           })
         });
+
         const data = await intentRes.json();
         if (!data.payment_intent) throw new Error(data.error || "Failed to create payment intent");
 
@@ -185,6 +191,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ payment_intent: data.payment_intent })
         });
+
         const result = await processRes.json();
 
         if (result.success) {
