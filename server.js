@@ -40,25 +40,51 @@ app.get('/ping', (_, res) => res.json({ message: 'pong' }));
 // --------------------
 // Root + POS routes
 // --------------------
-app.get('/', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/pos', (_, res) => res.sendFile(path.join(__dirname, 'public', 'pos.html')));
+app.get('/', (_, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'index.html'))
+);
+
+app.get('/pos', (_, res) =>
+  res.sendFile(path.join(__dirname, 'public', 'pos.html'))
+);
 
 // --------------------
-// Create Payment Intent
+// Create Payment Intent  (with OPTIONAL email receipt)
 // --------------------
 app.post('/create-payment-intent', async (req, res) => {
   try {
-    const { amount, currency = 'usd', email, metadata = {} } = req.body;
-    if (!amount) return res.status(400).json({ error: 'Missing amount' });
+    // email can come in as "email" from your UI.
+    // (We also accept "receipt_email" just in case.)
+    const {
+      amount,
+      currency = 'usd',
+      email,
+      receipt_email,
+      metadata = {},
+    } = req.body;
+
+    if (!amount) {
+      return res.status(400).json({ error: 'Missing amount' });
+    }
+
+    // Normalize optional email
+    const customerEmail = email || receipt_email || null;
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency,
       payment_method_types: ['card_present'],
       capture_method: 'automatic',
-      metadata,
       description: 'Authenticus POS Sale',
-      receipt_email: email || undefined,
+
+      // Merge any metadata you send, and store the customer email too
+      metadata: {
+        ...metadata,
+        ...(customerEmail ? { customer_email: customerEmail } : {}),
+      },
+
+      // This is what actually triggers Stripe’s email receipt (if enabled)
+      receipt_email: customerEmail || undefined,
     });
 
     console.log(`✅ Created PaymentIntent: ${paymentIntent.id}`);
@@ -75,16 +101,19 @@ app.post('/create-payment-intent', async (req, res) => {
 app.post('/process-on-reader', async (req, res) => {
   try {
     const { payment_intent } = req.body;
-    if (!payment_intent)
+    if (!payment_intent) {
       return res.status(400).json({ error: 'Missing payment_intent' });
+    }
 
-    await stripe.terminal.readers.processPaymentIntent(READER_ID, { payment_intent });
+    await stripe.terminal.readers.processPaymentIntent(READER_ID, {
+      payment_intent,
+    });
 
     // Poll until succeeded
     const poll = async () => {
       const pi = await stripe.paymentIntents.retrieve(payment_intent);
       if (pi.status === 'succeeded') return pi;
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 1500));
       return poll();
     };
 
@@ -92,21 +121,28 @@ app.post('/process-on-reader', async (req, res) => {
 
     res.json({ success: true, payment_intent: result });
 
-    // Prompt customer for optional email/SMS receipt
+    // (Optional) On-reader prompt for email/SMS contact
     try {
       if (result.status === 'succeeded') {
-        await new Promise(r => setTimeout(r, 1000));
-        const inputResult = await stripe.terminal.readers.collectInputs(READER_ID, {
-          type: 'customer_contact',
-          fields: [
-            { name: 'email', label: 'Email for receipt (optional)' },
-            { name: 'phone_number', label: 'SMS for receipt (optional)' },
-          ],
-        });
+        await new Promise((r) => setTimeout(r, 1000));
+
+        const inputResult = await stripe.terminal.readers.collectInputs(
+          READER_ID,
+          {
+            type: 'customer_contact',
+            fields: [
+              { name: 'email', label: 'Email for receipt (optional)' },
+              { name: 'phone_number', label: 'SMS for receipt (optional)' },
+            ],
+          }
+        );
         console.log('📨 Customer input collected on reader:', inputResult);
       }
     } catch (collectErr) {
-      console.error('⚠️ Error collecting on-reader inputs:', collectErr.message);
+      console.error(
+        '⚠️ Error collecting on-reader inputs:',
+        collectErr.message
+      );
     }
   } catch (err) {
     console.error('❌ Error processing payment on reader:', err.message);
@@ -115,7 +151,7 @@ app.post('/process-on-reader', async (req, res) => {
 });
 
 // --------------------
-// ✅ NEW: Cancel Payment on Reader
+// Cancel Payment on Reader
 // --------------------
 app.post('/cancel-payment', async (req, res) => {
   try {
