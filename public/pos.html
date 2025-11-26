@@ -55,8 +55,34 @@
       color: #f5c542;
     }
 
-    .totals { margin-top: 10px; line-height: 1.4; }
-    .totals span { color: #f5c542; }
+    .totals {
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+    .totals span {
+      color: #f5c542;
+    }
+
+    .email-block {
+      max-width: 520px;
+      margin: 15px auto 0;
+      text-align: left;
+    }
+
+    .email-block label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .email-block input {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #444;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
 
     #status {
       margin-top: 25px;
@@ -108,6 +134,12 @@
     </div>
   </div>
 
+  <!-- Optional email for receipt -->
+  <div class="email-block">
+    <label for="email">Customer Email (optional for receipt):</label>
+    <input type="email" id="email" placeholder="name@example.com" />
+  </div>
+
   <div>
     <button class="btn" id="charge" onclick="charge()">💳 Charge Customer</button>
     <button class="btn" id="cancel" onclick="cancelPayment()">🚫 Cancel Payment</button>
@@ -132,6 +164,7 @@
       order = [];
       updateOrder();
       document.getElementById("status").innerHTML = "";
+      document.getElementById("email").value = "";
     }
 
     function updateOrder() {
@@ -169,17 +202,27 @@
       const tax = Math.round(subtotal * TAX_RATE);
       const total = subtotal + tax;
 
+      // Optional email
+      const emailInput = document.getElementById("email").value.trim();
+      const email = emailInput.length ? emailInput : undefined;
+
       status.innerHTML = `Creating payment for $${(total / 100).toFixed(2)}...`;
 
       try {
+        // Build payload, only include email if present
+        const payload = {
+          amount: total,
+          currency: "usd",
+          metadata: { items: JSON.stringify(order) }
+        };
+        if (email) {
+          payload.email = email;
+        }
+
         const intentRes = await fetch(`${BASE_URL}/create-payment-intent`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            amount: total,
-            currency: "usd",
-            metadata: { items: JSON.stringify(order) }
-          })
+          body: JSON.stringify(payload)
         });
 
         const data = await intentRes.json();
