@@ -23,7 +23,7 @@
       justify-content: center;
       flex-wrap: wrap;
       gap: 15px;
-      margin-bottom: 30px;
+      margin-bottom: 18px;
     }
 
     .item {
@@ -42,7 +42,7 @@
     }
 
     #order {
-      max-width: 520px;
+      max-width: 620px;
       margin: 0 auto;
       background: #222;
       border-radius: 12px;
@@ -55,33 +55,60 @@
       color: #f5c542;
     }
 
+    ul { padding-left: 18px; }
+
     .totals {
       margin-top: 10px;
-      line-height: 1.4;
+      line-height: 1.6;
     }
     .totals span {
       color: #f5c542;
     }
 
-    .email-block {
-      max-width: 520px;
-      margin: 15px auto 0;
+    .tools {
+      max-width: 620px;
+      margin: 0 auto 18px;
+      background: #1b1b1b;
+      border-radius: 12px;
+      padding: 15px;
       text-align: left;
     }
-
-    .email-block label {
+    .tools h3 {
+      margin: 0 0 10px 0;
+      color: #f5c542;
+      font-size: 16px;
+      text-align: left;
+    }
+    .tool-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: end;
+      margin-bottom: 10px;
+    }
+    .tool {
+      flex: 1;
+      min-width: 200px;
+    }
+    label {
       display: block;
       margin-bottom: 6px;
       font-size: 14px;
+      color: #ddd;
     }
-
-    .email-block input {
+    input, select {
       width: 100%;
       padding: 10px;
       border-radius: 8px;
       border: 1px solid #444;
       font-size: 16px;
       box-sizing: border-box;
+      background: #111;
+      color: #fff;
+    }
+
+    .discount-buttons button {
+      margin: 6px 6px 0 0;
     }
 
     #status {
@@ -108,6 +135,8 @@
 
     #clear { background: #444; color: #fff; }
     #clear:hover { background: #666; }
+
+    .muted { color: #aaa; font-size: 13px; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -116,11 +145,46 @@
 
   <div class="menu">
     <button class="item" onclick="addItem('Studio Walkthrough', 25000)">Studio Walkthrough – $250</button>
-    <button class="item" onclick="addItem('White Frame 3D Model – $750', 75000)">White Frame 3D Model – $750</button>
-    <button class="item" onclick="addItem('White Frame 3D Model – $850', 85000)">White Frame 3D Model – $850</button>
-    <button class="item" onclick="addItem('White Frame 3D Model – $1000', 100000)">White Frame 3D Model – $1000</button>
-    <button class="item" onclick="addItem('White Frame 3D Model – $1250', 125000)">White Frame 3D Model – $1250</button>
-    <button class="item" onclick="addItem('test', 100)">test – $1</button>
+    <button class="item" onclick="addItem('Test Charge', 100)">Test – $1</button>
+  </div>
+
+  <!-- New: Tools (Discounts, Custom Total, Sq Ft) -->
+  <div class="tools">
+    <h3>Quick Tools</h3>
+
+    <div class="tool-row">
+      <div class="tool">
+        <label>Discount</label>
+        <div class="discount-buttons">
+          <button class="item" style="padding:10px 14px; font-size:16px;" onclick="setDiscount(0)">No Discount</button>
+          <button class="item" style="padding:10px 14px; font-size:16px;" onclick="setDiscount(0.10)">10% Off</button>
+          <button class="item" style="padding:10px 14px; font-size:16px;" onclick="setDiscount(0.20)">20% Off</button>
+          <button class="item" style="padding:10px 14px; font-size:16px;" onclick="setDiscount(0.30)">30% Off</button>
+        </div>
+        <div class="muted" id="discountLabel">No discount</div>
+      </div>
+
+      <div class="tool">
+        <label>Custom Total ($)</label>
+        <input id="customTotalInput" type="number" step="0.01" min="0" placeholder="0.00" />
+        <button class="item" style="padding:10px 14px; font-size:16px; margin-top:6px;" onclick="setCustomTotal()">Set Custom Total</button>
+        <div class="muted" id="customTotalNote"></div>
+      </div>
+    </div>
+
+    <div class="tool-row">
+      <div class="tool">
+        <label>Square Feet</label>
+        <input id="sqftInput" type="number" step="1" min="0" placeholder="0" />
+        <div class="muted">Adds a line item based on sq ft.</div>
+      </div>
+
+      <div class="tool">
+        <label>Sq Ft Pricing</label>
+        <button class="item" style="padding:10px 14px; font-size:16px;" onclick="addSqFtItem('Service @ $0.20/sf', 20)">$0.20 / sf</button>
+        <button class="item" style="padding:10px 14px; font-size:16px;" onclick="addSqFtItem('Service @ $0.40/sf', 40)">$0.40 / sf</button>
+      </div>
+    </div>
   </div>
 
   <div id="order">
@@ -129,13 +193,15 @@
 
     <div class="totals">
       <p>Subtotal: $<span id="subtotal">0.00</span></p>
+      <p>Discount: -$<span id="discountAmt">0.00</span></p>
       <p>Tax (8.25%): $<span id="tax">0.00</span></p>
       <p><strong>Total: $<span id="total">0.00</span></strong></p>
     </div>
   </div>
 
   <!-- Optional email for receipt -->
-  <div class="email-block">
+  <div class="tools" style="margin-top: 15px;">
+    <h3>Receipt</h3>
     <label for="email">Customer Email (optional for receipt):</label>
     <input type="email" id="email" placeholder="name@example.com" />
   </div>
@@ -150,26 +216,85 @@
 
   <script>
     const BASE_URL = window.location.origin;
-    const TAX_RATE = 0.0825; // Texas Sales Tax 8.25%
+
+    // Texas Sales Tax 8.25%
+    const TAX_RATE = 0.0825;
+
+    // Order items are in cents
+    // order: [{ name, price, qty }]
     let order = [];
 
+    // Discount rate: 0.10, 0.20, 0.30
+    let discountRate = 0;
+
+    function setDiscount(rate) {
+      discountRate = rate;
+      document.getElementById("discountLabel").textContent =
+        rate ? `Discount applied: ${Math.round(rate * 100)}%` : "No discount";
+      updateOrder();
+    }
+
     function addItem(name, price) {
-      const existing = order.find(i => i.name === name);
+      const existing = order.find(i => i.name === name && i.price === price);
       if (existing) existing.qty++;
       else order.push({ name, price, qty: 1 });
+
+      // Clear custom-total note when user starts adding items
+      document.getElementById("customTotalNote").textContent = "";
+      updateOrder();
+    }
+
+    function addSqFtItem(label, centsPerSqFt) {
+      const sqft = parseFloat(document.getElementById("sqftInput").value);
+      if (Number.isNaN(sqft) || sqft <= 0) {
+        alert("Enter a valid square footage.");
+        return;
+      }
+
+      const sqftRounded = Math.round(sqft);
+      const amountCents = sqftRounded * centsPerSqFt;
+      addItem(`${label} (${sqftRounded} sf)`, amountCents);
+    }
+
+    function setCustomTotal() {
+      const val = parseFloat(document.getElementById("customTotalInput").value);
+      if (Number.isNaN(val) || val < 0) {
+        alert("Enter a valid dollar amount.");
+        return;
+      }
+
+      const cents = Math.round(val * 100);
+
+      // Replace current order with a single custom line
+      order = [{ name: "Custom Charge", price: cents, qty: 1 }];
+
+      // Custom charge usually already reflects final number — clear discount
+      discountRate = 0;
+      document.getElementById("discountLabel").textContent = "No discount";
+
+      document.getElementById("customTotalNote").textContent =
+        `Custom total set to $${(cents / 100).toFixed(2)} (discount cleared)`;
+
       updateOrder();
     }
 
     function clearOrder() {
       order = [];
+      discountRate = 0;
       updateOrder();
+
       document.getElementById("status").innerHTML = "";
       document.getElementById("email").value = "";
+      document.getElementById("sqftInput").value = "";
+      document.getElementById("customTotalInput").value = "";
+      document.getElementById("customTotalNote").textContent = "";
+      document.getElementById("discountLabel").textContent = "No discount";
     }
 
     function updateOrder() {
       const list = document.getElementById("orderList");
       const subtotalEl = document.getElementById("subtotal");
+      const discountEl = document.getElementById("discountAmt");
       const taxEl = document.getElementById("tax");
       const totalEl = document.getElementById("total");
 
@@ -183,24 +308,31 @@
         subtotal += item.price * item.qty;
       });
 
-      const tax = Math.round(subtotal * TAX_RATE);
-      const total = subtotal + tax;
+      const discount = Math.round(subtotal * discountRate);
+      const discountedSubtotal = Math.max(0, subtotal - discount);
+
+      const tax = Math.round(discountedSubtotal * TAX_RATE);
+      const total = discountedSubtotal + tax;
 
       subtotalEl.textContent = (subtotal / 100).toFixed(2);
+      discountEl.textContent = (discount / 100).toFixed(2);
       taxEl.textContent = (tax / 100).toFixed(2);
       totalEl.textContent = (total / 100).toFixed(2);
     }
 
     async function charge() {
       const status = document.getElementById("status");
-      let subtotal = order.reduce((sum, i) => sum + i.price * i.qty, 0);
-      if (subtotal === 0) {
+
+      const rawSubtotal = order.reduce((sum, i) => sum + i.price * i.qty, 0);
+      if (rawSubtotal === 0) {
         status.innerHTML = "❌ Add at least one service.";
         return;
       }
 
-      const tax = Math.round(subtotal * TAX_RATE);
-      const total = subtotal + tax;
+      const discount = Math.round(rawSubtotal * discountRate);
+      const discountedSubtotal = Math.max(0, rawSubtotal - discount);
+      const tax = Math.round(discountedSubtotal * TAX_RATE);
+      const total = discountedSubtotal + tax;
 
       // Optional email
       const emailInput = document.getElementById("email").value.trim();
@@ -209,15 +341,14 @@
       status.innerHTML = `Creating payment for $${(total / 100).toFixed(2)}...`;
 
       try {
-        // Build payload, only include email if present
         const payload = {
-          amount: total,
+          amount: total,                 // cents
           currency: "usd",
-          metadata: { items: JSON.stringify(order) }
+          metadata: { items: JSON.stringify(order), discount_rate: String(discountRate) }
         };
-        if (email) {
-          payload.email = email;
-        }
+
+        // Your server.js accepts either "email" or "receipt_email"
+        if (email) payload.email = email;
 
         const intentRes = await fetch(`${BASE_URL}/create-payment-intent`, {
           method: "POST",
@@ -263,6 +394,9 @@
         status.innerHTML = `❌ Cancel error: ${err.message}`;
       }
     }
+
+    // initial render
+    updateOrder();
   </script>
 </body>
 </html>
