@@ -30,6 +30,8 @@ const READER_ID = process.env.READER_ID;
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.json());
+// NOTE: If you later implement real Stripe webhook signature verification,
+// the /webhook route should use raw body ONLY.
 app.use('/webhook', bodyParser.raw({ type: 'application/json' }));
 
 // --------------------
@@ -49,12 +51,10 @@ app.get('/pos', (_, res) =>
 );
 
 // --------------------
-// Create Payment Intent  (with OPTIONAL email receipt)
+// Create Payment Intent (optional email receipt + metadata)
 // --------------------
 app.post('/create-payment-intent', async (req, res) => {
   try {
-    // email can come in as "email" from your UI.
-    // (We also accept "receipt_email" just in case.)
     const {
       amount,
       currency = 'usd',
@@ -63,27 +63,26 @@ app.post('/create-payment-intent', async (req, res) => {
       metadata = {},
     } = req.body;
 
-    if (!amount) {
-      return res.status(400).json({ error: 'Missing amount' });
+    if (!amount || typeof amount !== 'number' || amount <= 0) {
+      return res.status(400).json({ error: 'Missing or invalid amount' });
     }
 
     // Normalize optional email
-    const customerEmail = email || receipt_email || null;
+    const customerEmail = (email || receipt_email || '').toString().trim() || null;
 
     const paymentIntent = await stripe.paymentIntents.create({
-      amount,
+      amount: Math.round(amount),
       currency,
       payment_method_types: ['card_present'],
       capture_method: 'automatic',
       description: 'Authenticus POS Sale',
 
-      // Merge any metadata you send, and store the customer email too
       metadata: {
         ...metadata,
         ...(customerEmail ? { customer_email: customerEmail } : {}),
       },
 
-      // This is what actually triggers Stripe’s email receipt (if enabled)
+      // Triggers Stripe email receipt (if enabled in Stripe dashboard)
       receipt_email: customerEmail || undefined,
     });
 
@@ -101,6 +100,10 @@ app.post('/create-payment-intent', async (req, res) => {
 app.post('/process-on-reader', async (req, res) => {
   try {
     const { payment_intent } = req.body;
+
+    if (!READER_ID) {
+      return res.status(500).json({ error: 'Server misconfigured: missing READER_ID' });
+    }
     if (!payment_intent) {
       return res.status(400).json({ error: 'Missing payment_intent' });
     }
@@ -109,40 +112,46 @@ app.post('/process-on-reader', async (req, res) => {
       payment_intent,
     });
 
-    // Poll until succeeded
+    // Poll until terminal completes the payment
     const poll = async () => {
       const pi = await stripe.paymentIntents.retrieve(payment_intent);
-      if (pi.status === 'succeeded') return pi;
+
+      // Common terminal outcomes:
+      // - succeeded
+      // - requires_payment_method (failed / canceled / retry)
+      // - canceled
+      if (pi.status === 'succeeded' || pi.status === 'canceled' || pi.status === 'requires_payment_method') {
+        return pi;
+      }
+
       await new Promise((r) => setTimeout(r, 1500));
       return poll();
     };
 
     const result = await poll();
 
-    res.json({ success: true, payment_intent: result });
+    // Return result
+    res.json({ success: result.status === 'succeeded', payment_intent: result });
 
-    // (Optional) On-reader prompt for email/SMS contact
+    // (Optional) On-reader prompt for email/SMS contact (non-blocking)
+    // NOTE: This collects contact info on the reader, but does not automatically
+    // attach it to the PaymentIntent unless you add code to do so.
     try {
       if (result.status === 'succeeded') {
         await new Promise((r) => setTimeout(r, 1000));
 
-        const inputResult = await stripe.terminal.readers.collectInputs(
-          READER_ID,
-          {
-            type: 'customer_contact',
-            fields: [
-              { name: 'email', label: 'Email for receipt (optional)' },
-              { name: 'phone_number', label: 'SMS for receipt (optional)' },
-            ],
-          }
-        );
+        const inputResult = await stripe.terminal.readers.collectInputs(READER_ID, {
+          type: 'customer_contact',
+          fields: [
+            { name: 'email', label: 'Email for receipt (optional)' },
+            { name: 'phone_number', label: 'SMS for receipt (optional)' },
+          ],
+        });
+
         console.log('📨 Customer input collected on reader:', inputResult);
       }
     } catch (collectErr) {
-      console.error(
-        '⚠️ Error collecting on-reader inputs:',
-        collectErr.message
-      );
+      console.error('⚠️ Error collecting on-reader inputs:', collectErr.message);
     }
   } catch (err) {
     console.error('❌ Error processing payment on reader:', err.message);
@@ -151,11 +160,29 @@ app.post('/process-on-reader', async (req, res) => {
 });
 
 // --------------------
-// Cancel Payment on Reader
+// Cancel Payment on Reader (+ optionally cancel PaymentIntent)
 // --------------------
 app.post('/cancel-payment', async (req, res) => {
   try {
+    if (!READER_ID) {
+      return res.status(500).json({ error: 'Server misconfigured: missing READER_ID' });
+    }
+
+    const { payment_intent } = (req.body || {});
+
+    // Cancel current action on the reader (stops collect/payment actions)
     await stripe.terminal.readers.cancelAction(READER_ID);
+
+    // If the frontend sends a payment_intent id, cancel it too (cleaner)
+    if (payment_intent) {
+      try {
+        await stripe.paymentIntents.cancel(payment_intent);
+      } catch (piCancelErr) {
+        // Not fatal; reader action already canceled
+        console.error('⚠️ Could not cancel PaymentIntent:', piCancelErr.message);
+      }
+    }
+
     console.log('🚫 Payment cancelled on reader.');
     res.json({ success: true, message: 'Payment cancelled on reader' });
   } catch (err) {
@@ -165,7 +192,7 @@ app.post('/cancel-payment', async (req, res) => {
 });
 
 // --------------------
-// Webhook (optional)
+// Webhook (optional placeholder)
 // --------------------
 app.post('/webhook', (req, res) => res.json({ received: true }));
 
